@@ -1,29 +1,28 @@
 import express from 'express'
 import fetch from 'node-fetch'
+import cors from 'cors'
 
 const app = express()
+app.use(cors())
 app.use(express.json())
 
-// Root route เช็คสถานะ API
 app.get("/", (req, res) => {
   res.send("✅ Roblox API Online")
 })
 
-// Endpoint /findUser รับ username แล้วดึง userId และ presence info
 app.post('/findUser', async (req, res) => {
   const username = req.body.username
   if (!username) return res.status(400).json({ error: 'No username provided' })
 
   try {
-    // STEP 1: แปลงชื่อ username เป็น userId
     const userRes = await fetch('https://users.roblox.com/v1/usernames/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ usernames: [username], excludeBannedUsers: false })
     })
-    const userData = await userRes.json()
+    if (!userRes.ok) throw new Error('Failed to fetch userId')
 
-    // Debug: แสดงข้อมูล user ที่ได้
+    const userData = await userRes.json()
     console.log('User Data:', userData)
 
     if (!userData.data || userData.data.length === 0)
@@ -31,24 +30,21 @@ app.post('/findUser', async (req, res) => {
 
     const userId = userData.data[0].id
 
-    // STEP 2: ดึงข้อมูล presence ของ userId
     const presenceRes = await fetch('https://presence.roblox.com/v1/presence/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userIds: [userId] })
     })
-    const presenceData = await presenceRes.json()
+    if (!presenceRes.ok) throw new Error('Failed to fetch presence info')
 
-    // Debug: แสดงข้อมูล presence ที่ได้
+    const presenceData = await presenceRes.json()
     console.log('Presence Data:', presenceData)
 
-    const presenceInfo = presenceData.userPresences[0]
+    const presenceInfo = presenceData.userPresences && presenceData.userPresences[0]
 
-    // ถ้า user ไม่มี placeId หรือ gameId (ไม่ได้เล่นเกม)
     if (!presenceInfo || !presenceInfo.placeId || !presenceInfo.gameId)
       return res.status(404).json({ error: 'User not in a game or presence not found' })
 
-    // ส่งกลับ placeId และ jobId (gameId)
     res.json({
       placeId: presenceInfo.placeId,
       jobId: presenceInfo.gameId
@@ -60,7 +56,6 @@ app.post('/findUser', async (req, res) => {
   }
 })
 
-// ตั้ง port และเริ่ม server
 const port = process.env.PORT || 3000
 app.listen(port, () => {
   console.log(`Server is running on port ${port}`)
